@@ -1,12 +1,15 @@
 #include <cusparse_v2.h>
 
 #ifdef FLOAT
-typedef float real;
+#warning "EEE2"
+typedef unsigned short real;
 
 #elif defined DOUBLE
+#warning "EEE1"
 typedef double real;
 
 #else
+#warning "EEE"
 typedef double real;
 #endif
 
@@ -23,7 +26,7 @@ typedef double real;
 #define TEST_NUM 2
 
 /* Number of SpGEMM Execution for Evaluation or Test */
-#define SPGEMM_TRI_NUM 11
+#define SPGEMM_TRI_NUM 1
 
 /* Define 2 related */
 #define sfFLT_MAX 1000000000
@@ -165,7 +168,12 @@ void spgemm_kernel_cu_csr(sfCSR *a, sfCSR *b, sfCSR *c,
                           cusparseMatDescr_t *descr_b);
 void spgemm_cu_csr(sfCSR *a, sfCSR *b, sfCSR *c);
 void check_spgemm_answer(sfCSR c, sfCSR ans);
-void spgemm_kernel_hash(sfCSR *a, sfCSR *b, sfCSR *c);
+void spgemm_kernel_hash(sfCSR *a, sfCSR *b, sfCSR *c, int grSize, unsigned short int * grBody, unsigned int * grTail, bool setGRflag);
+void setGR();
+
+__constant__ int device_grammar_size = 2;
+__constant__ unsigned short device_grammar_body[1000] = {0x4, 0x8};
+__constant__ unsigned int device_grammar_tail[1000] = {0x00030003, 0x00070007};
 
 
 

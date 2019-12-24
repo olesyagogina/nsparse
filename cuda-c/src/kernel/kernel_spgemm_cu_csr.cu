@@ -63,96 +63,96 @@ void spgemm_kernel_cu_csr(sfCSR *a, sfCSR *b, sfCSR *c,
                           cusparseMatDescr_t *descr_a,
                           cusparseMatDescr_t *descr_b)
 {
-    int m, n, k;
-    int base_c, nnz_c;
-    int *nnzTotalDevHostPtr = &nnz_c;
-    cusparseMatDescr_t descr_c;
-    cusparseStatus_t status;
-  
-    // int it = 0;
-    // struct timeval start, end;
-    // float msec[10];
-
-    m = a->M;
-    n = b->N;
-    k = a->N;
-    c->M = m;
-    c->N = n;
-  
-    // gettimeofday(&start, NULL);
-    cusparseCreateMatDescr(&descr_c);
-    cusparseSetMatType(descr_c,CUSPARSE_MATRIX_TYPE_GENERAL);
-    cusparseSetMatIndexBase(descr_c,CUSPARSE_INDEX_BASE_ZERO);
-    // gettimeofday(&end, NULL);
-    // msec[it++] = (float)(end.tv_sec - start.tv_sec) * 1000 + (float)(end.tv_usec - start.tv_usec) / 1000;
-  
-    // msec[it++] = 0;
-
-    // gettimeofday(&start, NULL);
-    cusparseSetPointerMode(*cusparseHandle, CUSPARSE_POINTER_MODE_HOST);
-    checkCudaErrors(cudaMalloc((void **)&(c->d_rpt), sizeof(int) * (m + 1)));
-    // gettimeofday(&end, NULL);
-    // msec[it++] = (float)(end.tv_sec - start.tv_sec) * 1000 + (float)(end.tv_usec - start.tv_usec) / 1000;
-
-    /* Count nnz of C */
-    // gettimeofday(&start, NULL);
-    status = cusparseXcsrgemmNnz(*cusparseHandle, *trans_a, *trans_b, m, n, k,
-                                 *descr_a, a->nnz, a->d_rpt, a->d_col,
-                                 *descr_b, b->nnz, b->d_rpt, b->d_col,
-                                 descr_c, c->d_rpt, nnzTotalDevHostPtr);
-  
-    if (status != CUSPARSE_STATUS_SUCCESS) {
-        printf("Fail by xcsrgemmnnz\n");
-        exit(1);
-    }
-
-    if (nnzTotalDevHostPtr != NULL) {
-        c->nnz = *nnzTotalDevHostPtr;
-    }
-    else {
-        cudaMemcpy(&(c->nnz), c->d_rpt + m, sizeof(int), cudaMemcpyDeviceToHost);
-        cudaMemcpy(&base_c, c->d_rpt, sizeof(int), cudaMemcpyDeviceToHost);
-        c->nnz -= base_c;
-    }
-  
-    // gettimeofday(&end, NULL);
-    // msec[it++] = (float)(end.tv_sec - start.tv_sec) * 1000 + (float)(end.tv_usec - start.tv_usec) / 1000;
-
-    // msec[it++] = 0;
-
-    /* Calculating value of C */
-    // gettimeofday(&start, NULL);
-
-    checkCudaErrors(cudaMalloc((void **)&(c->d_col), sizeof(int) * c->nnz));
-    checkCudaErrors(cudaMalloc((void **)&(c->d_val), sizeof(real) * c->nnz));
-
-    // gettimeofday(&end, NULL);
-    // msec[it++] = (float)(end.tv_sec - start.tv_sec) * 1000 + (float)(end.tv_usec - start.tv_usec) / 1000;
-
-    // gettimeofday(&start, NULL);
-#ifdef FLOAT
-    status = cusparseScsrgemm(*cusparseHandle, *trans_a, *trans_b, m, n, k,
-                              *descr_a, a->nnz,
-                              a->d_val, a->d_rpt, a->d_col,
-                              *descr_b, b->nnz,
-                              b->d_val, b->d_rpt, b->d_col,
-                              descr_c,
-                              c->d_val, c->d_rpt, c->d_col);
-#else
-    status = cusparseDcsrgemm(*cusparseHandle, *trans_a, *trans_b, m, n, k,
-                              *descr_a, a->nnz,
-                              a->d_val, a->d_rpt, a->d_col,
-                              *descr_b, b->nnz,
-                              b->d_val, b->d_rpt, b->d_col,
-                              descr_c,
-                              c->d_val, c->d_rpt, c->d_col);
-#endif
-  
-    cudaThreadSynchronize();
-    if (status != CUSPARSE_STATUS_SUCCESS) {
-        printf("Fail by csrgemm\n");
-        exit(1);
-    }
+//    int m, n, k;
+//    int base_c, nnz_c;
+//    int *nnzTotalDevHostPtr = &nnz_c;
+//    cusparseMatDescr_t descr_c;
+//    cusparseStatus_t status;
+//
+//    // int it = 0;
+//    // struct timeval start, end;
+//    // float msec[10];
+//
+//    m = a->M;
+//    n = b->N;
+//    k = a->N;
+//    c->M = m;
+//    c->N = n;
+//
+//    // gettimeofday(&start, NULL);
+//    cusparseCreateMatDescr(&descr_c);
+//    cusparseSetMatType(descr_c,CUSPARSE_MATRIX_TYPE_GENERAL);
+//    cusparseSetMatIndexBase(descr_c,CUSPARSE_INDEX_BASE_ZERO);
+//    // gettimeofday(&end, NULL);
+//    // msec[it++] = (float)(end.tv_sec - start.tv_sec) * 1000 + (float)(end.tv_usec - start.tv_usec) / 1000;
+//
+//    // msec[it++] = 0;
+//
+//    // gettimeofday(&start, NULL);
+//    cusparseSetPointerMode(*cusparseHandle, CUSPARSE_POINTER_MODE_HOST);
+//    checkCudaErrors(cudaMalloc((void **)&(c->d_rpt), sizeof(int) * (m + 1)));
+//    // gettimeofday(&end, NULL);
+//    // msec[it++] = (float)(end.tv_sec - start.tv_sec) * 1000 + (float)(end.tv_usec - start.tv_usec) / 1000;
+//
+//    /* Count nnz of C */
+//    // gettimeofday(&start, NULL);
+//    status = cusparseXcsrgemmNnz(*cusparseHandle, *trans_a, *trans_b, m, n, k,
+//                                 *descr_a, a->nnz, a->d_rpt, a->d_col,
+//                                 *descr_b, b->nnz, b->d_rpt, b->d_col,
+//                                 descr_c, c->d_rpt, nnzTotalDevHostPtr);
+//
+//    if (status != CUSPARSE_STATUS_SUCCESS) {
+//        printf("Fail by xcsrgemmnnz\n");
+//        exit(1);
+//    }
+//
+//    if (nnzTotalDevHostPtr != NULL) {
+//        c->nnz = *nnzTotalDevHostPtr;
+//    }
+//    else {
+//        cudaMemcpy(&(c->nnz), c->d_rpt + m, sizeof(int), cudaMemcpyDeviceToHost);
+//        cudaMemcpy(&base_c, c->d_rpt, sizeof(int), cudaMemcpyDeviceToHost);
+//        c->nnz -= base_c;
+//    }
+//
+//    // gettimeofday(&end, NULL);
+//    // msec[it++] = (float)(end.tv_sec - start.tv_sec) * 1000 + (float)(end.tv_usec - start.tv_usec) / 1000;
+//
+//    // msec[it++] = 0;
+//
+//    /* Calculating value of C */
+//    // gettimeofday(&start, NULL);
+//
+//    checkCudaErrors(cudaMalloc((void **)&(c->d_col), sizeof(int) * c->nnz));
+//    checkCudaErrors(cudaMalloc((void **)&(c->d_val), sizeof(real) * c->nnz));
+//
+//    // gettimeofday(&end, NULL);
+//    // msec[it++] = (float)(end.tv_sec - start.tv_sec) * 1000 + (float)(end.tv_usec - start.tv_usec) / 1000;
+//
+//    // gettimeofday(&start, NULL);
+//#ifdef FLOAT
+//    status = cusparseScsrgemm(*cusparseHandle, *trans_a, *trans_b, m, n, k,
+//                              *descr_a, a->nnz,
+//                              a->d_val, a->d_rpt, a->d_col,
+//                              *descr_b, b->nnz,
+//                              b->d_val, b->d_rpt, b->d_col,
+//                              descr_c,
+//                              c->d_val, c->d_rpt, c->d_col);
+//#else
+//    status = cusparseDcsrgemm(*cusparseHandle, *trans_a, *trans_b, m, n, k,
+//                              *descr_a, a->nnz,
+//                              a->d_val, a->d_rpt, a->d_col,
+//                              *descr_b, b->nnz,
+//                              b->d_val, b->d_rpt, b->d_col,
+//                              descr_c,
+//                              c->d_val, c->d_rpt, c->d_col);
+//#endif
+//
+//    cudaThreadSynchronize();
+//    if (status != CUSPARSE_STATUS_SUCCESS) {
+//        printf("Fail by csrgemm\n");
+//        exit(1);
+//    }
 //     gettimeofday(&end, NULL);
 //     msec[it++] = (float)(end.tv_sec - start.tv_sec) * 1000 + (float)(end.tv_usec - start.tv_usec) / 1000;
 

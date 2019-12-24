@@ -75,12 +75,18 @@ __device__ __inline__ void st_gbl_ans(const real *ans_gpu, real answer)
 
 }
 
+#define INT16 1
+
 __device__ __inline__ real ld_gbl_real(const real *val) {
 
   real return_value;
 
 #ifdef FLOAT
-  asm("ld.global.cv.f32 %0, [%1];" : "=f"(return_value) : "l"(val));
+#ifdef INT16
+  asm("ld.global.cv.u16 %0, [%1];" : "=h"(return_value) : "l"(val));
+#elif defined INT32
+  asm("ld.global.cv.u32 %0, [%1];" : "=r"(return_value) : "l"(val));
+#endif
 #else
   asm("ld.global.cv.f64 %0, [%1];" : "=d"(return_value) : "l"(val));
 #endif
@@ -94,13 +100,50 @@ __device__ __inline__ int ld_gbl_int32(const int *col) {
   return return_value;
 }
 
+__device__ unsigned short atomicAddShort(unsigned short* address, unsigned short val)
+{
+    unsigned int *base_address = (unsigned int *) ((char *)address - ((size_t)address & 2));	//tera's revised version (showtopic=201975)
+    unsigned int long_val = ((size_t)address & 2) ? ((unsigned int)val << 16) : (unsigned short)val;
+    unsigned int long_old = atomicOr(base_address, long_val);
+    if ((size_t)address & 2) {
+        return (unsigned short)(long_old >> 16);
+    } else {
+        unsigned int overflow = ((long_old & 0xffff) + long_val) & 0xffff0000;
+        if (overflow)
+            atomicSub(base_address, overflow);
+        return (unsigned short)(long_old & 0xffff);
+    }
+}
+
+
+
 __device__ __inline__ void atomic_fadd(real *adr, real val)
 {
-#if __CUDA_ARCH__ >= 600
-    atomicAdd(adr, val);
-#else
+//#if __CUDA_ARCH__ >= 600
+//    atomicAdd(adr, val);
+//    printf("600ARCH");
+//#else
 #ifdef FLOAT
-    atomicAdd(adr, val);
+#ifdef INT16
+    unsigned short int *address_ull = (unsigned short int *)(adr);
+    //printf("BEFORE: %d for %p\n", *address_ull, address_ull);
+    //printf("VAL: %d for %p\n", val, address_ull);
+    real input = val;
+    atomicAddShort(adr, val);
+    //printf("RES: %d for %p\n", *address_ull, address_ull);
+#elif defined INT32
+    unsigned int *address_ull = (unsigned int *)(adr);
+    //printf("BEFORE: %d for %p\n", *address_ull, address_ull);
+    //printf("VAL: %d for %p\n", val, address_ull);
+    unsigned int old_val = *address_ull;
+    unsigned int assumed;
+    real input = val;
+    do {
+        assumed = old_val;
+        old_val = atomicCAS(address_ull, assumed, input | assumed);
+    } while (assumed != old_val);
+    //printf("RES: %d for %p\n", *address_ull, address_ull);
+#endif
 #elif defined DOUBLE
     unsigned long long int *address_ull = (unsigned long long int *)(adr);
     unsigned long long int old_val = *address_ull;
@@ -111,5 +154,6 @@ __device__ __inline__ void atomic_fadd(real *adr, real val)
         old_val = atomicCAS(address_ull, assumed, __double_as_longlong(input + __longlong_as_double(assumed)));
     } while (assumed != old_val);
 #endif
-#endif
+//#endif
 }
+

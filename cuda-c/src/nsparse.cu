@@ -40,6 +40,7 @@ void convert_file_csr(char *file_name,
     fgets(line, LINE_LENGTH_MAX, fp);
     if (strstr(line, "general")) {
         isUnsy = 1;
+        printf("UNSIMMETRICAL\n");
     }
     do {
         fgets(line, LINE_LENGTH_MAX, fp);
@@ -91,6 +92,8 @@ void convert_file_csr(char *file_name,
         }
     }
 
+
+    // Store matrix in CSR format
     /* Allocation of rpt, col, val */
     rpt_ = (int *)malloc(sizeof(int) * ((*M) + 1));
     col_ = (int *)malloc(sizeof(int) * (*nz));
@@ -99,13 +102,13 @@ void convert_file_csr(char *file_name,
     offset = 0;
     *nnz_max = 0;
     for (i = 0; i < (*M); i++) {
-        rpt_[i] = offset;
+        rpt_[i] = offset; // looks like we have amount of not null in rows before this row
         offset += nnz_num[i];
         if(*nnz_max < nnz_num[i]){
             *nnz_max = nnz_num[i];
         }
     }
-    rpt_[(*M)] = offset;
+    rpt_[(*M)] = offset; // amount of all not null
 
     each_row_index = (int *)malloc(sizeof(int) * (*M));
     for (i = 0; i < (*M); i++) {
@@ -333,6 +336,11 @@ void check_spgemm_answer(sfCSR c, sfCSR ans)
 #endif
     for (i = 0; i < nz; i++) {
         delta = ans.val[i] - c.val[i];
+#ifdef FLOAT
+        printf("In (%d %d) we have: %d\n", 1, c.col[i], c.val[i]);
+#else
+        printf("In (%d %d) we have: %f\n", 1, c.col[i], c.val[i]);
+#endif
         base = ans.val[i];
         if (delta < 0) delta *= -1;
         if (base < 0) base *= -1;

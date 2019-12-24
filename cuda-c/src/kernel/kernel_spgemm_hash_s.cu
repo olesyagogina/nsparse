@@ -621,6 +621,44 @@ __global__ void set_row_nz_bin_each_gl(const int *d_arpt, const int *d_acol,
     }
 }
 
+
+void setGR(int grSize, unsigned short int * grBody, unsigned int * grTail) {
+    unsigned short * global_device_grammar_body = 0;
+    unsigned int * global_device_grammar_tail = 0;
+
+    cudaMalloc((void**)&global_device_grammar_body, grSize * sizeof(unsigned short));
+    cudaMalloc((void**)&global_device_grammar_tail, grSize * sizeof(unsigned int));
+
+    cudaMemcpy(global_device_grammar_body, grBody, grSize * sizeof(unsigned short), cudaMemcpyHostToDevice);
+    cudaMemcpy(global_device_grammar_tail, grTail, grSize * sizeof(unsigned int), cudaMemcpyHostToDevice);
+
+    cudaMemcpyToSymbol(device_grammar_body, global_device_grammar_body, grSize * sizeof(unsigned short));
+    cudaMemcpyToSymbol(device_grammar_tail, global_device_grammar_tail, grSize * sizeof(unsigned int));
+    cudaError_t result = cudaMemcpyToSymbol(device_grammar_size, &grSize, sizeof(int));
+    if (result != cudaSuccess) {
+        printf("PROBLEM with grammar copying: %s\n", cudaGetErrorString(result));
+    }
+}
+
+
+__device__ real mult(real a, real b) {
+    unsigned int tmpA = a;
+    unsigned int tmpB = b;
+    tmpA <<= 16;
+    unsigned int conc = tmpA | tmpB;
+    real mult = 0;
+    //printf("In Mult: A: %x B: %x\n", tmpA, tmpB);
+    //printf("GRSIZE: %d\n", device_grammar_size);
+
+    for (int i = 0; i < device_grammar_size; i++) {
+        //printf("Compare: grTail: %x Conc: %x\n", device_grammar_tail[i], conc);
+        if ((device_grammar_tail[i] & conc) == device_grammar_tail[i]) {
+            mult |= device_grammar_body[i];
+        }
+    }
+    return mult;
+}
+
 void set_row_nnz(int *d_arpt, int *d_acol,
                  int *d_brpt, int *d_bcol,
                  int *d_crpt,
@@ -683,13 +721,13 @@ __global__ void calculate_value_col_bin_pwarp(const int *d_arpt,
             adr = soffset + hash;
             while (1) {
                 if (shared_check[adr] == key) {
-                    atomic_fadd(shared_value + adr, aval * bval);
+                    atomic_fadd(shared_value + adr, mult(aval, bval));
                     break;
                 }
                 else if (shared_check[adr] == -1) {
                     old = atomicCAS(shared_check + adr, -1, key);
                     if (old == -1) {
-                        atomic_fadd(shared_value + adr, aval * bval);
+                        atomic_fadd(shared_value + adr, mult(aval, bval));
                         break;
                     }
                 }
@@ -786,13 +824,13 @@ __global__ void calculate_value_col_bin_each(const int *d_arpt,
                 adr = soffset + hash;
                 while (1) {
                     if (shared_check[adr] == key) {
-                        atomic_fadd(shared_value + adr, aval * bval);
+                        atomic_fadd(shared_value + adr, mult(aval, bval));
                         break;
                     }
                     else if (shared_check[adr] == -1) {
                         old = atomicCAS(shared_check + adr, -1, key);
                         if (old == -1) {
-                            atomic_fadd(shared_value + adr, aval * bval);
+                            atomic_fadd(shared_value + adr, mult(aval, bval));
                             break;
                         }
                     }
@@ -883,13 +921,13 @@ __global__ void calculate_value_col_bin_each_tb(const int *d_arpt,
             hash = (bcol * HASH_SCAL) & (SH_ROW - 1);
             while (1) {
                 if (shared_check[hash] == key) {
-                    atomic_fadd(shared_value + hash, aval * bval);
+                    atomic_fadd(shared_value + hash, mult(aval, bval));
                     break;
                 }
                 else if (shared_check[hash] == -1) {
                     old = atomicCAS(shared_check + hash, -1, key);
                     if (old == -1) {
-                        atomic_fadd(shared_value + hash, aval * bval);
+                        atomic_fadd(shared_value + hash, mult(aval, bval));
                         break;
                     }
                 }
@@ -981,13 +1019,13 @@ __global__ void calculate_value_col_bin_each_gl(const int *d_arpt,
             adr = doffset + hash;
             while (1) {
                 if (d_check[adr] == key) {
-                    atomic_fadd(d_value + adr, aval * bval);
+                    atomic_fadd(d_value + adr, mult(aval, bval));
                     break;
                 }
                 else if (d_check[adr] == -1) {
                     old = atomicCAS(d_check + adr, -1, key);
                     if (old == -1) {
-                        atomic_fadd(d_value + adr, aval * bval);
+                        atomic_fadd(d_value + adr, mult(aval, bval));
                         break;
                     }
                 }
@@ -1032,9 +1070,12 @@ void calculate_value_col_bin(int *d_arpt, int *d_acol, real *d_aval,
                              sfBIN *bin,
                              int M);
   
-void spgemm_kernel_hash(sfCSR *a, sfCSR *b, sfCSR *c)
+void spgemm_kernel_hash(sfCSR *a, sfCSR *b, sfCSR *c, int grSize, unsigned short int * grBody, unsigned int * grTail,
+                        bool setGRflag)
 {
-  
+    if (setGRflag) {
+        setGR(grSize, grBody, grTail);
+    }
     int M;
     sfBIN bin;
   
