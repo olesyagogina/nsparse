@@ -168,7 +168,7 @@ void spgemm_kernel_cu_csr(sfCSR *a, sfCSR *b, sfCSR *c,
                           cusparseMatDescr_t *descr_b);
 void spgemm_cu_csr(sfCSR *a, sfCSR *b, sfCSR *c);
 void check_spgemm_answer(sfCSR c, sfCSR ans);
-void spgemm_kernel_hash(sfCSR *a, sfCSR *b, sfCSR *c, int grSize, unsigned short int * grBody, unsigned int * grTail, bool setGRflag);
+void spgemm_kernel_hash(sfCSR *a, sfCSR *b, sfCSR *c, int grSize, unsigned short * grBody, unsigned int * grTail, bool setGRflag);
 void setGR();
 
 __constant__ int device_grammar_size = 2;

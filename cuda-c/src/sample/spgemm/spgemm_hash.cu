@@ -10,8 +10,20 @@
 #include <helper_cuda.h>
 
 #include <nsparse.h>
-
 #ifdef FLOAT
+#include <iostream>
+#include <string>
+#include <vector>
+#include <unordered_map>
+#include <map>
+#include <unordered_map>
+#include <unordered_set>
+#include <sstream>
+#include <chrono>
+#include <fstream>
+using namespace std;
+using namespace std::chrono;
+
 void csr_copy(sfCSR * src, sfCSR * dst) {
     release_csr(*dst);
     dst->M = src->M;
@@ -28,7 +40,8 @@ void csr_copy(sfCSR * src, sfCSR * dst) {
     checkCudaErrors(cudaMemcpy(dst->d_val, src->d_val, sizeof(real) * src->nnz, cudaMemcpyDeviceToDevice));
 }
 
-__device__ bool flagNoChange = true;
+__device__ int flagNoChange = true;
+__device__ int nnzSum = 0;
 
 // C = A | B and check if C == A (if they are equal flagNoChange will be false)
 // sz - amount of rows (we sum square matrix)
@@ -60,7 +73,6 @@ __global__ void sumSparse(int sz, int * rptA, real * valA, int * colA, int * rpt
 
             // if both matrix are in game
             if (colAcnt < rptA[i + 1] && colBcnt < rptB[i + 1]) {
-               // printf("Col nums: %d %d\n", colA[colAcnt], colB[colBcnt]);
                 if (colA[colAcnt] <= colB[colBcnt]) {
                     colC[colCcnt] = colA[colAcnt];
                     if (colA[colAcnt] == colB[colBcnt]) {
@@ -96,6 +108,7 @@ __global__ void sumSparse(int sz, int * rptA, real * valA, int * colA, int * rpt
         }
 
         rptC[i + 1] = newrpt;
+        nnzSum = newrpt;
     }
 }
 #endif
@@ -107,31 +120,35 @@ void spgemm_csr(sfCSR *a, sfCSR *b, sfCSR *c, int grSize, unsigned short int * g
     int i;
   
     long long int flop_count;
-    cudaEvent_t event[2];
-    float msec, ave_msec, flops;
+    cudaEvent_t event[4];
+    float msec, msec_sum, ave_msec, flops;
   
-    for (i = 0; i < 2; i++) {
+    for (i = 0; i < 4; i++) {
         cudaEventCreate(&(event[i]));
     }
   
     /* Memcpy A and B from Host to Device */
     csr_memcpy(a);
     csr_memcpy(b);
-  
+
     /* Count flop of SpGEMM computation */
     get_spgemm_flop(a, b, a->M, &flop_count);
 
     /* Execution of SpGEMM on Device */
     ave_msec = 0;
+    unsigned int ave_msec_sum = 0;
     for (i = 0; i < SPGEMM_TRI_NUM; i++) {
         if (i > 0) {
             release_csr(*c);
         }
         cudaEventRecord(event[0], 0);
 #ifdef FLOAT
-        bool noChange = 0;
+        int noChange = 0;
         bool first = true;
+        int nnzS = 0;
+        int u = 0;
         while (!noChange) {
+            u++;
             printf("Ready for mult\n");
             if (first) {
                 first = false;
@@ -149,12 +166,37 @@ void spgemm_csr(sfCSR *a, sfCSR *b, sfCSR *c, int grSize, unsigned short int * g
             cudaFree(b->d_val);
             checkCudaErrors(cudaMalloc((void **)&(b->d_col), sizeof(int) * (a->nnz + c->nnz)));
             checkCudaErrors(cudaMalloc((void **)&(b->d_val), sizeof(real) * (a->nnz + c->nnz)));
+            printf("Ready for sum!!\n");
+
             sumSparse<<<1, 1>>>(a->M, a->d_rpt, a->d_val, a->d_col, c->d_rpt, c->d_val, c->d_col, b->d_rpt, b->d_val, b->d_col);
+            printf("Success sum!!\n");
+
+
+            printf("Ready for copy!!\n");
+            high_resolution_clock::time_point begin_sum_time = high_resolution_clock::now();
+            cudaMemcpyFromSymbol(&nnzS, nnzSum, sizeof(int), 0, cudaMemcpyDeviceToHost);
+            b->nnz = nnzS;
             csr_copy(b, a);
             csr_copy(a, b);
-            cudaMemcpyFromSymbol(&noChange, flagNoChange, sizeof(bool), 0, cudaMemcpyDeviceToHost);
+            high_resolution_clock::time_point end_sum_time = high_resolution_clock::now();
+            printf("Success copy!!\n");
+            milliseconds elapsed_secs = duration_cast<milliseconds>(end_sum_time - begin_sum_time);
+            ave_msec_sum += static_cast<unsigned int>(elapsed_secs.count());
+
+            //printf("NNZ of sum: %d RPT last of sum: %d\n", b->nnz, b->rpt[4]);
+            cudaError_t result = cudaGetLastError();
+            if (result != cudaSuccess) {
+                printf("PROBLEM1: %s\n", cudaGetErrorString(result));
+            }
+            cudaMemcpyFromSymbol(&noChange, flagNoChange, sizeof(int), 0, cudaMemcpyDeviceToHost);
+            //printf("FLAG: %d\n", noChange);
+            result = cudaGetLastError();
+            if (result != cudaSuccess) {
+                printf("PROBLEM2: %s\n", cudaGetErrorString(result));
+            }
             cudaThreadSynchronize();
         }
+        printf("Average 'in copy' time: %d %d %f\n", ave_msec_sum, u, ave_msec_sum / (double)u);
 #endif
         cudaEventRecord(event[1], 0);
         cudaThreadSynchronize();
@@ -182,6 +224,15 @@ void spgemm_csr(sfCSR *a, sfCSR *b, sfCSR *c, int grSize, unsigned short int * g
 
 
     csr_memcpyDtH(c);
+#ifdef FLOAT
+    int t, sumAmount = 0;
+    for (t = 0; t < c->nnz; t++) {
+        if ((c->val[t] & 0x1) == 0x1) {
+            sumAmount++;
+        }
+    }
+    printf("SumAmount: %d\n", sumAmount);
+#endif
 #ifndef FLOAT
     release_csr(*c);
 #endif
@@ -206,7 +257,153 @@ void spgemm_csr(sfCSR *a, sfCSR *b, sfCSR *c, int grSize, unsigned short int * g
 
 }
 
+#ifdef FLOAT
+unsigned char toBoolVector(unsigned int number) {
+    return ((unsigned short)0x1) << number;
+}
 
+std::unordered_map<std::string, std::vector<int> > terminal_to_nonterminals;
+
+int load_grammar(const std::string & grammar_filename, unsigned short * grammar_body, unsigned int * grammar_tail) {
+    std::ifstream chomsky_stream(grammar_filename);
+
+    std::string line, tmp;
+    unsigned int nonterminals_count = 0;
+
+    std::map<std::string, unsigned int> nonterminal_to_index;
+    std::vector<unsigned int> epsilon_nonterminals;
+    std::vector<std::pair<unsigned int, std::pair<unsigned int, unsigned int> > > rules;
+
+    while (getline(chomsky_stream, line)) {
+        vector <std::string> terms;
+        istringstream iss(line);
+        while (iss >> tmp) {
+            terms.push_back(tmp);
+        }
+        if (!nonterminal_to_index.count(terms[0])) {
+            nonterminal_to_index[terms[0]] = nonterminals_count++;
+        }
+        if (terms.size() == 1) {
+            epsilon_nonterminals.push_back(nonterminal_to_index[terms[0]]);
+        } else if (terms.size() == 2) {
+            if (!terminal_to_nonterminals.count(terms[1])) {
+                terminal_to_nonterminals[terms[1]] = {};
+            }
+            terminal_to_nonterminals[terms[1]].push_back(nonterminal_to_index[terms[0]]);
+        } else if (terms.size() == 3) {
+            if (!nonterminal_to_index.count(terms[1])) {
+                nonterminal_to_index[terms[1]] = nonterminals_count++;
+            }
+            if (!nonterminal_to_index.count(terms[2])) {
+                nonterminal_to_index[terms[2]] = nonterminals_count++;
+            }
+            rules.push_back(
+                    {nonterminal_to_index[terms[0]], {nonterminal_to_index[terms[1]], nonterminal_to_index[terms[2]]}});
+        }
+    }
+    chomsky_stream.close();
+
+
+
+    for (size_t i = 0; i < rules.size(); i++) {
+        grammar_body[i] = toBoolVector(rules[i].first);
+        grammar_tail[i] = (((unsigned int)toBoolVector(rules[i].second.first)) << 16) | (unsigned int)toBoolVector(rules[i].second.second);
+    }
+
+    return rules.size();
+}
+
+void load_graph(const std::string & graph_filename, sfCSR * matrix) {
+    std::vector<std::pair<std::string, std::pair<unsigned int, unsigned int> > > edges;
+    unsigned int vertices_count = 0;
+
+    std::ifstream graph_stream(graph_filename);
+    unsigned int from, to;
+    std::string terminal;
+    while (graph_stream >> from >> terminal >> to) {
+        edges.push_back({terminal, {from, to}});
+        vertices_count = max(vertices_count, max(from, to) + 1);
+    }
+    graph_stream.close();
+
+    matrix->nnz = 0;
+    matrix->M = vertices_count;
+    matrix->N = vertices_count;
+    int * col_coo = (int *)malloc(sizeof(int) * edges.size());
+    int * row_coo = (int *)malloc(sizeof(int) * edges.size());
+    real * val_coo = (real *)malloc(sizeof(real) * edges.size());
+    int i = 0;
+
+    for (auto & edge : edges) {
+        if (terminal_to_nonterminals.count(edge.first) == 0) {
+            continue;
+        }
+        auto nonterminals = terminal_to_nonterminals.at(edge.first);
+        unsigned short bool_vector = 0;
+        for (auto nonterminal : nonterminals) {
+            bool_vector |= toBoolVector(nonterminal);
+        }
+
+        row_coo[i] = edge.second.first;
+        col_coo[i] = edge.second.second;
+        val_coo[i] = bool_vector;
+        i++;
+    }
+
+
+    /* Count the number of non-zero in each row */
+    int num = i;
+    int * nnz_num = (int *)malloc(sizeof(int) * matrix->M);
+    for (i = 0; i < matrix->M; i++) {
+        nnz_num[i] = 0;
+    }
+    for (i = 0; i < num; i++) {
+        nnz_num[row_coo[i]]++;
+    }
+
+    for (i = 0; i < matrix->M; i++) {
+        matrix->nnz += nnz_num[i];
+    }
+
+    // Store matrix in CSR format
+    /* Allocation of rpt, col, val */
+    int * rpt_ = (int *)malloc(sizeof(int) * (matrix->M + 1));
+    int * col_ = (int *)malloc(sizeof(int) * matrix->nnz);
+    real * val_ = (real *)malloc(sizeof(real) * matrix->nnz);
+
+    int offset = 0;
+    matrix->nnz_max = 0;
+    for (i = 0; i < matrix->M; i++) {
+        rpt_[i] = offset; // looks like we have amount of not null in rows before this row
+        offset += nnz_num[i];
+        if(matrix->nnz_max < nnz_num[i]){
+            matrix->nnz_max = nnz_num[i];
+        }
+    }
+    rpt_[matrix->M] = offset; // amount of all not null
+
+    int * each_row_index = (int *)malloc(sizeof(int) * matrix->M);
+    for (i = 0; i < matrix->M; i++) {
+        each_row_index[i] = 0;
+    }
+
+    for (i = 0; i < num; i++) {
+        col_[rpt_[row_coo[i]] + each_row_index[row_coo[i]]] = col_coo[i];
+        val_[rpt_[row_coo[i]] + each_row_index[row_coo[i]]++] = val_coo[i];
+    }
+
+    matrix->rpt = rpt_;
+    matrix->col = col_;
+    matrix->val = val_;
+
+    free(nnz_num);
+    free(row_coo);
+    free(col_coo);
+    free(val_coo);
+    free(each_row_index);
+    //printf("MATRIX loader: dimension: %d, nnz: %d\n", matrix->M, matrix->nnz);
+}
+#endif
 
 
 /* Main Function */
@@ -215,19 +412,40 @@ int main(int argc, char **argv)
     sfCSR mat_a, mat_b, mat_c;
   
     /* Set CSR reading from MM file */
-    int grammar_size = 3;
+    int grammar_size = 6;
     unsigned short * grammar_body = (unsigned short *)calloc(grammar_size, sizeof(unsigned short));
-    grammar_body[0] = 0x4;
-    grammar_body[1] = 0x8;
-    grammar_body[2] = 0x4;
+    grammar_body[0] = 0x1;
+//    grammar_body[0] = 0x4;
+    grammar_body[1] = 0x1;
+//    grammar_body[1] = 0x8;
+    grammar_body[2] = 0x1;
+    grammar_body[3] = 0x1;
+    grammar_body[4] = 0x4;
+    grammar_body[5] = 0x10;
     unsigned int * grammar_tail = (unsigned int *)calloc(grammar_size, sizeof(unsigned int));
-    grammar_tail[0] = 0x00030003;
-    grammar_tail[1] = 0x00070007;
-    grammar_tail[2] = 0x00000010;
+    grammar_tail[0] = 0x00020004;
+    grammar_tail[1] = 0x00080010;
+//    grammar_tail[0] = 0x00030003;
+//    grammar_tail[1] = 0x00040004;
+    grammar_tail[2] = 0x00020020;
+    grammar_tail[3] = 0x00080040;
+    grammar_tail[4] = 0x00010020;
+    grammar_tail[5] = 0x00010040;
     cudaDeviceSynchronize();
+#ifndef FLOAT
     init_csr_matrix_from_file(&mat_a, argv[1]);
     init_csr_matrix_from_file(&mat_b, argv[1]);
-  
+#endif
+
+#ifdef FLOAT
+    //printf("Before loading\n");
+    grammar_size = load_grammar(argv[1], grammar_body, grammar_tail);
+    //printf("Grammar loaded\n");
+    load_graph(argv[2], &mat_a);
+    //printf("Graph loaded\n");
+    load_graph(argv[2], &mat_b);
+    printf("NNZ_A: %d, NNZ_B: %d\n", mat_a.nnz, mat_b.nnz);
+#endif
     spgemm_csr(&mat_a, &mat_b, &mat_c, grammar_size, grammar_body, grammar_tail);
 
     release_cpu_csr(mat_a);

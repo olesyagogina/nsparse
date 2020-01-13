@@ -1,7 +1,7 @@
 CXX = g++
 NVCC = nvcc
 
-CFLAGS = -O3 -g
+CFLAGS = -O3 -g -std=c++11
 CFLAGS += -L. ${REAL} -lm
 LDFLAGS = ${CFLAGS}
 

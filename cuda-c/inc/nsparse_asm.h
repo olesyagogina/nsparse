@@ -140,7 +140,7 @@ __device__ __inline__ void atomic_fadd(real *adr, real val)
     real input = val;
     do {
         assumed = old_val;
-        old_val = atomicCAS(address_ull, assumed, input | assumed);
+        old_val = atomicCAS(address_ull, assumed, input + assumed);
     } while (assumed != old_val);
     //printf("RES: %d for %p\n", *address_ull, address_ull);
 #endif

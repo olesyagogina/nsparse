@@ -40,13 +40,11 @@ void get_spgemm_flop(sfCSR *a, sfCSR *b,
 
     BS = MAX_LOCAL_THREAD_NUM;
     checkCudaErrors(cudaMalloc((void **)&(d_max_row_nz), sizeof(long long int) * M));
-  
     GS = div_round_up(M, BS);
     set_intprod_per_row<<<GS, BS>>>(a->d_rpt, a->d_col,
                                     b->d_rpt,
                                     d_max_row_nz,
                                     M);
-  
     long long int *tmp = (long long int *)malloc(sizeof(long long int) * M);
     cudaMemcpy(tmp, d_max_row_nz, sizeof(long long int) * M, cudaMemcpyDeviceToHost);
     *flop = thrust::reduce(thrust::device, d_max_row_nz, d_max_row_nz + M);
