@@ -136,7 +136,7 @@ void spgemm_csr(sfCSR *a, sfCSR *b, sfCSR *c, int grSize, unsigned short int * g
 
     /* Execution of SpGEMM on Device */
     ave_msec = 0;
-    unsigned int ave_msec_sum = 0;
+    unsigned int ave_msec_sum = 0, ave_msec_copy = 0;
     for (i = 0; i < SPGEMM_TRI_NUM; i++) {
         if (i > 0) {
             release_csr(*c);
@@ -153,12 +153,12 @@ void spgemm_csr(sfCSR *a, sfCSR *b, sfCSR *c, int grSize, unsigned short int * g
             if (first) {
                 first = false;
 #endif
-                spgemm_kernel_hash(a, b, c, grSize, grBody, grTail, true);
+                spgemm_kernel_hash(a, a, c, grSize, grBody, grTail, true);
 #ifdef FLOAT
             }
             else {
                 release_csr(*c);
-                spgemm_kernel_hash(a, b, c, grSize, grBody, grTail, false);
+                spgemm_kernel_hash(a, a, c, grSize, grBody, grTail, false);
             }
 
             printf("Success mult!!\n");
@@ -167,21 +167,27 @@ void spgemm_csr(sfCSR *a, sfCSR *b, sfCSR *c, int grSize, unsigned short int * g
             checkCudaErrors(cudaMalloc((void **)&(b->d_col), sizeof(int) * (a->nnz + c->nnz)));
             checkCudaErrors(cudaMalloc((void **)&(b->d_val), sizeof(real) * (a->nnz + c->nnz)));
             printf("Ready for sum!!\n");
-
-            sumSparse<<<1, 1>>>(a->M, a->d_rpt, a->d_val, a->d_col, c->d_rpt, c->d_val, c->d_col, b->d_rpt, b->d_val, b->d_col);
-            printf("Success sum!!\n");
-
-
-            printf("Ready for copy!!\n");
             high_resolution_clock::time_point begin_sum_time = high_resolution_clock::now();
-            cudaMemcpyFromSymbol(&nnzS, nnzSum, sizeof(int), 0, cudaMemcpyDeviceToHost);
-            b->nnz = nnzS;
-            csr_copy(b, a);
-            csr_copy(a, b);
+            sumSparse<<<1, 1>>>(a->M, a->d_rpt, a->d_val, a->d_col, c->d_rpt, c->d_val, c->d_col, b->d_rpt, b->d_val, b->d_col);
+            cudaThreadSynchronize();
             high_resolution_clock::time_point end_sum_time = high_resolution_clock::now();
-            printf("Success copy!!\n");
+            printf("Success sum!!\n");
             milliseconds elapsed_secs = duration_cast<milliseconds>(end_sum_time - begin_sum_time);
             ave_msec_sum += static_cast<unsigned int>(elapsed_secs.count());
+
+            printf("Ready for copy!!\n");
+
+            high_resolution_clock::time_point begin_copy_time = high_resolution_clock::now();
+            cudaMemcpyFromSymbol(&nnzS, nnzSum, sizeof(int), 0, cudaMemcpyDeviceToHost);
+            b->nnz = nnzS;
+            sfCSR * tmp = b;
+            b = a;
+            a = tmp;
+            high_resolution_clock::time_point end_copy_time = high_resolution_clock::now();
+
+            printf("Success copy!!\n");
+            milliseconds elapsed_secs_c = duration_cast<milliseconds>(end_copy_time - begin_copy_time);
+            ave_msec_copy += static_cast<unsigned int>(elapsed_secs_c.count());
 
             //printf("NNZ of sum: %d RPT last of sum: %d\n", b->nnz, b->rpt[4]);
             cudaError_t result = cudaGetLastError();
@@ -196,7 +202,8 @@ void spgemm_csr(sfCSR *a, sfCSR *b, sfCSR *c, int grSize, unsigned short int * g
             }
             cudaThreadSynchronize();
         }
-        printf("Average 'in copy' time: %d %d %f\n", ave_msec_sum, u, ave_msec_sum / (double)u);
+        printf("Average 'in sum' time: %d %d %f\n", ave_msec_sum, u, ave_msec_sum / (double)u);
+        printf("Average 'in copy' time: %d %d %f\n", ave_msec_copy, u, ave_msec_copy / (double)u);
 #endif
         cudaEventRecord(event[1], 0);
         cudaThreadSynchronize();
@@ -213,13 +220,13 @@ void spgemm_csr(sfCSR *a, sfCSR *b, sfCSR *c, int grSize, unsigned short int * g
 #ifndef FLOAT
     ave_msec /= SPGEMM_TRI_NUM - 1;
 #endif
-  
+
     flops = (float)(flop_count) / 1000 / 1000 / ave_msec;
   
-    printf("SpGEMM using CSR format (Hash-based): %s, %f[GFLOPS], %f[ms]\n", a->matrix_name, flops, ave_msec);
+    printf("SpGEMM using CSR format (Hash-based): %f[GFLOPS], %f[ms]\n", flops, ave_msec);
 
 #ifdef FLOAT
-    c = b;
+    c = a;
 #endif
 
 
