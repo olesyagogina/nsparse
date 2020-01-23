@@ -45,6 +45,26 @@ void csr_copy(sfCSR * src, sfCSR * dst) {
     checkCudaErrors(cudaMemcpy(dst->d_val, src->d_val, sizeof(real) * src->nnz, cudaMemcpyDeviceToDevice));
 }
 
+
+__global__ void print_matrix(int sz, int * rpt, int * col, real * val) {
+    int i, j, cnt = 0;
+    for (i = 1; i <= sz; i++) {
+        for (j = 0; j < sz; j++) {
+            if (cnt < rpt[i]) {
+                if (col[cnt] == j) {
+                    printf("%d ", val[cnt]);
+                    cnt++;
+                } else {
+                    printf("0 ");
+                }
+            } else {
+                printf("0 ");
+            }
+        }
+        printf("\n");
+    }
+}
+
 __device__ int flagNoChange = true;
 __device__ int nnzSum = 0;
 
@@ -258,6 +278,9 @@ void spgemm_csr(sfCSR *a, sfCSR *b, sfCSR *c, int grSize, unsigned short int * g
             }
 
             printf("Success mult!!\n");
+            printf("Matrix after mult\n");
+//            print_matrix<<<1, 1>>>(c->M, c->d_rpt, c->d_col, c->d_val);
+            cudaThreadSynchronize();
             cudaFree(b->d_col);
             cudaFree(b->d_val);
             checkCudaErrors(cudaMalloc((void **)&(b->d_col), sizeof(int) * (a->nnz + c->nnz)));
@@ -279,11 +302,13 @@ void spgemm_csr(sfCSR *a, sfCSR *b, sfCSR *c, int grSize, unsigned short int * g
             milliseconds elapsed_secs = duration_cast<milliseconds>(end_sum_time - begin_sum_time);
             ave_msec_sum += static_cast<unsigned int>(elapsed_secs.count());
 
+            printf("Matrix after sum:\n");
+//            print_matrix<<<1, 1>>>(b->M, b->d_rpt, b->d_col, b->d_val);
+            cudaThreadSynchronize();
             printf("Ready for copy!!\n");
 
             high_resolution_clock::time_point begin_copy_time = high_resolution_clock::now();
             cudaMemcpyFromSymbol(&nnzS, nnzSum, sizeof(int), 0, cudaMemcpyDeviceToHost);
-            printf("GGGNNZ_S: %d\n", nnzS);
             b->nnz = nnzS;
             sfCSR * tmp = b;
             b = a;
@@ -331,7 +356,7 @@ void spgemm_csr(sfCSR *a, sfCSR *b, sfCSR *c, int grSize, unsigned short int * g
     printf("SpGEMM using CSR format (Hash-based): %f[GFLOPS], %f[ms]\n", flops, ave_msec);
 
 #ifdef FLOAT
-    c = a;
+   // c = a;
 #endif
 
 
@@ -552,6 +577,12 @@ int main(int argc, char **argv)
 #ifdef FLOAT
     //printf("Before loading\n");
     grammar_size = load_grammar(argv[1], grammar_body, grammar_tail);
+    printf("Grammar:\n");
+    int q;
+    printf("Grammar size: %d\n", grammar_size);
+    for (q = 0; q < grammar_size; q++) {
+        printf("%p -> %p\n", grammar_body[q], grammar_tail[q]);
+    }
     //printf("Grammar loaded\n");
     load_graph(argv[2], &mat_a);
     //printf("Graph loaded\n");
