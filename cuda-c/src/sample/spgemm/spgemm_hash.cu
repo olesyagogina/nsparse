@@ -244,75 +244,61 @@ void spgemm_csr(sfCSR *a, sfCSR *b, sfCSR *c, int grSize, unsigned short int * g
     /* Execution of SpGEMM on Device */
     ave_msec = 0;
     unsigned int ave_msec_sum = 0, ave_msec_copy = 0;
-    for (i = 0; i < SPGEMM_TRI_NUM; i++) {
-        if (i > 0) {
+    cudaEventRecord(event[0], 0);
+#ifdef FLOAT
+    int noChange = 0;
+    bool first = true;
+    int nnzS = 0;
+    int u = 0;
+    while (!noChange) {
+        u++;
+        if (first) {
+            first = false;
+#endif
+            spgemm_kernel_hash(a, a, c, grSize, grBody, grTail, true);
+#ifdef FLOAT
+        }
+        else {
             release_csr(*c);
+            spgemm_kernel_hash(a, a, c, grSize, grBody, grTail, false);
         }
-        cudaEventRecord(event[0], 0);
-#ifdef FLOAT
-        int noChange = 0;
-        bool first = true;
-        int nnzS = 0;
-        int u = 0;
-        while (!noChange) {
-            u++;
-            if (first) {
-                first = false;
-#endif
-                spgemm_kernel_hash(a, a, c, grSize, grBody, grTail, true);
-#ifdef FLOAT
-            }
-            else {
-                release_csr(*c);
-                spgemm_kernel_hash(a, a, c, grSize, grBody, grTail, false);
-            }
 
-            cudaThreadSynchronize();
-            cudaFree(b->d_col);
-            cudaFree(b->d_val);
-            checkCudaErrors(cudaMalloc((void **)&(b->d_col), sizeof(int) * (a->nnz + c->nnz)));
-            checkCudaErrors(cudaMalloc((void **)&(b->d_val), sizeof(real) * (a->nnz + c->nnz)));
-
-            high_resolution_clock::time_point begin_sum_time = high_resolution_clock::now();
-            sumSparse(a, c, b);
-            cudaThreadSynchronize();
-            high_resolution_clock::time_point end_sum_time = high_resolution_clock::now();
-            milliseconds elapsed_secs = duration_cast<milliseconds>(end_sum_time - begin_sum_time);
-            ave_msec_sum += static_cast<unsigned int>(elapsed_secs.count());
-
-            high_resolution_clock::time_point begin_copy_time = high_resolution_clock::now();
-            cudaMemcpyFromSymbol(&nnzS, nnzSum, sizeof(int), 0, cudaMemcpyDeviceToHost);
-            b->nnz = nnzS;
-            sfCSR * tmp = b;
-            b = a;
-            a = tmp;
-            high_resolution_clock::time_point end_copy_time = high_resolution_clock::now();
-
-            milliseconds elapsed_secs_c = duration_cast<milliseconds>(end_copy_time - begin_copy_time);
-            ave_msec_copy += static_cast<unsigned int>(elapsed_secs_c.count());
-
-            cudaMemcpyFromSymbol(&noChange, flagNoChange, sizeof(int), 0, cudaMemcpyDeviceToHost);
-            cudaThreadSynchronize();
-        }
-        printf("Average 'in sum' time: %d %d %f\n", ave_msec_sum, u, ave_msec_sum / (double)u);
-        printf("Average 'in copy' time: %d %d %f\n", ave_msec_copy, u, ave_msec_copy / (double)u);
-        printf("Amount of mults: %d\n", u);
-#endif
-        cudaEventRecord(event[1], 0);
         cudaThreadSynchronize();
-        cudaEventElapsedTime(&msec, event[0], event[1]);
+        cudaFree(b->d_col);
+        cudaFree(b->d_val);
+        checkCudaErrors(cudaMalloc((void **)&(b->d_col), sizeof(int) * (a->nnz + c->nnz)));
+        checkCudaErrors(cudaMalloc((void **)&(b->d_val), sizeof(real) * (a->nnz + c->nnz)));
 
-#ifndef FLOAT
-        if (i > 0) {
-#endif
-            ave_msec += msec;
-#ifndef FLOAT
-        }
-#endif
+        high_resolution_clock::time_point begin_sum_time = high_resolution_clock::now();
+        sumSparse(a, c, b);
+        cudaThreadSynchronize();
+        high_resolution_clock::time_point end_sum_time = high_resolution_clock::now();
+        milliseconds elapsed_secs = duration_cast<milliseconds>(end_sum_time - begin_sum_time);
+        ave_msec_sum += static_cast<unsigned int>(elapsed_secs.count());
+
+        high_resolution_clock::time_point begin_copy_time = high_resolution_clock::now();
+        cudaMemcpyFromSymbol(&nnzS, nnzSum, sizeof(int), 0, cudaMemcpyDeviceToHost);
+        b->nnz = nnzS;
+        sfCSR * tmp = b;
+        b = a;
+        a = tmp;
+        high_resolution_clock::time_point end_copy_time = high_resolution_clock::now();
+
+        milliseconds elapsed_secs_c = duration_cast<milliseconds>(end_copy_time - begin_copy_time);
+        ave_msec_copy += static_cast<unsigned int>(elapsed_secs_c.count());
+
+        cudaMemcpyFromSymbol(&noChange, flagNoChange, sizeof(int), 0, cudaMemcpyDeviceToHost);
+        cudaThreadSynchronize();
     }
-#ifndef FLOAT
-    ave_msec /= SPGEMM_TRI_NUM - 1;
+    printf("Average 'in sum' time: %d %d %f\n", ave_msec_sum, u, ave_msec_sum / (double)u);
+    printf("Average 'in copy' time: %d %d %f\n", ave_msec_copy, u, ave_msec_copy / (double)u);
+    printf("Amount of mults: %d\n", u);
 #endif
+    cudaEventRecord(event[1], 0);
+    cudaThreadSynchronize();
+    cudaEventElapsedTime(&msec, event[0], event[1]);
+
+    ave_msec += msec;
     printf("Total algorithm time: %f[ms]\n", ave_msec);
 
 #ifdef FLOAT
@@ -504,7 +490,7 @@ int main(int argc, char **argv)
     sfCSR mat_a, mat_b, mat_c;
   
     /* Set CSR reading from MM file */
-    int grammar_size = 6;
+    int grammar_size;
     unsigned short * grammar_body = (unsigned short *)calloc(grammar_size, sizeof(unsigned short));
     unsigned int * grammar_tail = (unsigned int *)calloc(grammar_size, sizeof(unsigned int));
 #ifndef FLOAT

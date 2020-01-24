@@ -641,7 +641,7 @@ void setGR(int grSize, unsigned short int * grBody, unsigned int * grTail) {
 }
 
 
-__device__ real mult(real a, real b) {
+__device__ inline real mult(real a, real b) {
     unsigned int tmpA = a;
     unsigned int tmpB = b;
     tmpA <<= 16;
@@ -654,11 +654,17 @@ __device__ real mult(real a, real b) {
 //        }
 //    }
 
-    if ((0x20004 & conc) == 0x20004) {
+//    if ((0x20004 & conc) == 0x20004) {
+//        mult |= 0x1;
+//    } else if ((0x10008 & conc) == 0x10008) {
+//        mult |= 0x4;
+//    }
+    if ((0x20004 & conc) == 0x20004 || (0x80010 & conc) == 0x80010 || (0x20020 & conc) == 0x20020 || (0x80040 & conc) == 0x80040) {
         mult |= 0x1;
-    }
-    if ((0x10008 & conc) == 0x10008) {
+    } else if ((0x10020 & conc) == 0x10020) {
         mult |= 0x4;
+    } else if ((0x10040 & conc) == 0x10040) {
+        mult |= 0x10;
     }
     return mult;
 }
@@ -1078,7 +1084,7 @@ void spgemm_kernel_hash(sfCSR *a, sfCSR *b, sfCSR *c, int grSize, unsigned short
                         bool setGRflag)
 {
     if (setGRflag) {
-        setGR(grSize, grBody, grTail);
+//        setGR(grSize, grBody, grTail);
     }
     int M;
     sfBIN bin;
