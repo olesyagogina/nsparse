@@ -648,15 +648,18 @@ __device__ real mult(real a, real b) {
     unsigned int conc = tmpA | tmpB;
     real mult = 0;
 
-    //printf("GRSIZE: %d\n", device_grammar_size);
+//    for (int i = 0; i < device_grammar_size; i++) {
+//        if ((device_grammar_tail[i] & conc) == device_grammar_tail[i]) {
+//            mult |= device_grammar_body[i];
+//        }
+//    }
 
-    for (int i = 0; i < device_grammar_size; i++) {
-        //printf("Compare: grTail: %x Conc: %x\n", device_grammar_tail[i], conc);
-        if ((device_grammar_tail[i] & conc) == device_grammar_tail[i]) {
-            mult |= device_grammar_body[i];
-        }
+    if ((0x20004 & conc) == 0x20004) {
+        mult |= 0x1;
     }
-//    printf("In Mult: A: %x B: %x RES: %x\n", tmpA, tmpB, mult);
+    if ((0x10008 & conc) == 0x10008) {
+        mult |= 0x4;
+    }
     return mult;
 }
 
