@@ -46,20 +46,31 @@ void csr_copy(sfCSR * src, sfCSR * dst) {
 }
 
 
+__global__ void print_sum(int nnz, real * val) {
+    int sumAmount = 0;
+    int t;
+    for (t = 0; t < nnz; t++) {
+        if ((val[t] & 0x1) == 0x1) {
+            sumAmount++;
+        }
+    }
+    printf("SumAmountPart: %d\n", sumAmount);
+}
+
+
 __global__ void print_matrix(int sz, int * rpt, int * col, real * val) {
     int i, j, cnt = 0;
+    printf("RPT: \n");
     for (i = 1; i <= sz; i++) {
-        for (j = 0; j < sz; j++) {
-            if (cnt < rpt[i]) {
-                if (col[cnt] == j) {
-                    printf("%d ", val[cnt]);
-                    cnt++;
-                } else {
-                    printf("0 ");
-                }
-            } else {
-                printf("0 ");
-            }
+        printf("%d ", rpt[i]);
+    }
+    printf("\n");
+
+    printf("(Col, VAL)\n");
+    for (i = 1; i <= sz; i++) {
+        while (cnt < rpt[i]) {
+            printf("(%d, %d) ", col[cnt], val[cnt]);
+            cnt++;
         }
         printf("\n");
     }
@@ -73,10 +84,13 @@ __global__ void set_nnz_sum(int * rptC, int sz) {
     rptC[0] = 0;
     int i;
     int sum = 0;
+    printf("Counted RPT:\n");
     for (i = 1; i <= sz; i++) {
         sum += rptC[i];
         rptC[i] = sum;
+        printf("%d ", rptC[i]);
     }
+    printf("\n");
     nnzSum = sum;
 }
 
@@ -169,6 +183,9 @@ __global__ void precount_kernel(int sz, int * rptA, int * colA, real * valA, int
         colAcnt = rptA[i];
         colBcnt = rptB[i];
         counter = 0;
+        if (rpt_start_index == 19) {
+            printf("Here start = %d, %d - %d, %d\n", colAcnt, colBcnt, colB[colBcnt], colA[colAcnt]);
+        }
 
         //printf("In start of while: %d %d\n", colAcnt, colBcnt);
         while (colAcnt < rptA[i + 1] || colBcnt < rptB[i + 1]) {
@@ -203,6 +220,9 @@ __global__ void precount_kernel(int sz, int * rptA, int * colA, real * valA, int
         }
 
         rptC[i + 1] = counter;
+        if (rpt_start_index == 19) {
+            printf("RES of rpt: %d\n", counter);
+        }
     }
 }
 
@@ -279,8 +299,15 @@ void spgemm_csr(sfCSR *a, sfCSR *b, sfCSR *c, int grSize, unsigned short int * g
 
             printf("Success mult!!\n");
             printf("Matrix after mult\n");
-//            print_matrix<<<1, 1>>>(c->M, c->d_rpt, c->d_col, c->d_val);
             cudaThreadSynchronize();
+            print_sum<<<1, 1>>>(c->nnz, c->d_val);
+            cudaThreadSynchronize();
+//            if (u == 2) {
+//                print_matrix<<<1, 1>>>(c->M, c->d_rpt, c->d_col, c->d_val);
+//                cudaThreadSynchronize();
+//                print_matrix<<<1, 1>>>(a->M, a->d_rpt, a->d_col, a->d_val);
+//                cudaThreadSynchronize();
+//            }
             cudaFree(b->d_col);
             cudaFree(b->d_val);
             checkCudaErrors(cudaMalloc((void **)&(b->d_col), sizeof(int) * (a->nnz + c->nnz)));
@@ -302,14 +329,15 @@ void spgemm_csr(sfCSR *a, sfCSR *b, sfCSR *c, int grSize, unsigned short int * g
             milliseconds elapsed_secs = duration_cast<milliseconds>(end_sum_time - begin_sum_time);
             ave_msec_sum += static_cast<unsigned int>(elapsed_secs.count());
 
-            printf("Matrix after sum:\n");
-//            print_matrix<<<1, 1>>>(b->M, b->d_rpt, b->d_col, b->d_val);
-            cudaThreadSynchronize();
             printf("Ready for copy!!\n");
 
             high_resolution_clock::time_point begin_copy_time = high_resolution_clock::now();
             cudaMemcpyFromSymbol(&nnzS, nnzSum, sizeof(int), 0, cudaMemcpyDeviceToHost);
             b->nnz = nnzS;
+            printf("Matrix after sum:\n");
+//            print_matrix<<<1, 1>>>(b->M, b->d_rpt, b->d_col, b->d_val);
+            print_sum<<<1, 1>>>(b->nnz, b->d_val);
+            cudaThreadSynchronize();
             sfCSR * tmp = b;
             b = a;
             a = tmp;
@@ -334,6 +362,7 @@ void spgemm_csr(sfCSR *a, sfCSR *b, sfCSR *c, int grSize, unsigned short int * g
         }
         printf("Average 'in sum' time: %d %d %f\n", ave_msec_sum, u, ave_msec_sum / (double)u);
         printf("Average 'in copy' time: %d %d %f\n", ave_msec_copy, u, ave_msec_copy / (double)u);
+        printf("Amount of mults: %d\n", u);
 #endif
         cudaEventRecord(event[1], 0);
         cudaThreadSynchronize();
@@ -356,7 +385,7 @@ void spgemm_csr(sfCSR *a, sfCSR *b, sfCSR *c, int grSize, unsigned short int * g
     printf("SpGEMM using CSR format (Hash-based): %f[GFLOPS], %f[ms]\n", flops, ave_msec);
 
 #ifdef FLOAT
-   // c = a;
+    c = a;
 #endif
 
 
@@ -469,7 +498,7 @@ void load_graph(const std::string & graph_filename, sfCSR * matrix) {
     int * col_coo = (int *)malloc(sizeof(int) * edges.size());
     int * row_coo = (int *)malloc(sizeof(int) * edges.size());
     real * val_coo = (real *)malloc(sizeof(real) * edges.size());
-    int i = 0;
+    vector<pair<pair<int, int>, unsigned short> > tempVec;
 
     for (auto & edge : edges) {
         if (terminal_to_nonterminals.count(edge.first) == 0) {
@@ -481,15 +510,26 @@ void load_graph(const std::string & graph_filename, sfCSR * matrix) {
             bool_vector |= toBoolVector(nonterminal);
         }
 
-        row_coo[i] = edge.second.first;
-        col_coo[i] = edge.second.second;
-        val_coo[i] = bool_vector;
-        i++;
+        tempVec.push_back({{edge.second.first, edge.second.second}, bool_vector});
+    }
+
+    sort(tempVec.begin(), tempVec.end(),
+    [](const pair<pair<int, int>, unsigned short> & a, const pair<pair<int, int>, unsigned short> & b) -> bool
+{
+    return a.first.second < b.first.second;
+});
+
+    for (int i = 0; i < tempVec.size(); i++) {
+        //printf("INput: %p %p %p\n", tempVec[i].first.first, tempVec[i].first.second, tempVec[i].second);
+        row_coo[i] = tempVec[i].first.first;
+        col_coo[i] = tempVec[i].first.second;
+        val_coo[i] = tempVec[i].second;
     }
 
 
     /* Count the number of non-zero in each row */
-    int num = i;
+    int num = tempVec.size();
+    int i;
     int * nnz_num = (int *)malloc(sizeof(int) * matrix->M);
     for (i = 0; i < matrix->M; i++) {
         nnz_num[i] = 0;
