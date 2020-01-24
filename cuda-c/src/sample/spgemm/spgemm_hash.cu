@@ -84,13 +84,13 @@ __global__ void set_nnz_sum(int * rptC, int sz) {
     rptC[0] = 0;
     int i;
     int sum = 0;
-    printf("Counted RPT:\n");
+//    printf("Counted RPT:\n");
     for (i = 1; i <= sz; i++) {
         sum += rptC[i];
         rptC[i] = sum;
-        printf("%d ", rptC[i]);
+//        printf("%d ", rptC[i]);
     }
-    printf("\n");
+//    printf("\n");
     nnzSum = sum;
 }
 
@@ -183,9 +183,6 @@ __global__ void precount_kernel(int sz, int * rptA, int * colA, real * valA, int
         colAcnt = rptA[i];
         colBcnt = rptB[i];
         counter = 0;
-        if (rpt_start_index == 19) {
-            printf("Here start = %d, %d - %d, %d\n", colAcnt, colBcnt, colB[colBcnt], colA[colAcnt]);
-        }
 
         //printf("In start of while: %d %d\n", colAcnt, colBcnt);
         while (colAcnt < rptA[i + 1] || colBcnt < rptB[i + 1]) {
@@ -220,9 +217,6 @@ __global__ void precount_kernel(int sz, int * rptA, int * colA, real * valA, int
         }
 
         rptC[i + 1] = counter;
-        if (rpt_start_index == 19) {
-            printf("RES of rpt: %d\n", counter);
-        }
     }
 }
 
@@ -235,15 +229,15 @@ void sumSparse(sfCSR * a, sfCSR * b, sfCSR * c) {
     cudaThreadSynchronize();
     int nnzS = -1;
     cudaError_t result = cudaGetLastError();
-    if (result != cudaSuccess) {
-        printf("PROBLEM11: %s\n", cudaGetErrorString(result));
-    }
+//    if (result != cudaSuccess) {
+//        printf("PROBLEM11: %s\n", cudaGetErrorString(result));
+//    }
     set_nnz_sum<<<1, 1>>>(c->d_rpt, c->M); // always in one thread!!!!
     cudaThreadSynchronize();
     result = cudaGetLastError();
-    if (result != cudaSuccess) {
-        printf("PROBLEM22: %s\n", cudaGetErrorString(result));
-    }
+//    if (result != cudaSuccess) {
+//        printf("PROBLEM22: %s\n", cudaGetErrorString(result));
+//    }
     sumSparse_kernel<<<1, gridAmount>>>(a->M, a->d_rpt, a->d_col, a->d_val, b->d_rpt, b->d_col, b->d_val, c->d_rpt, c->d_col, c->d_val);
     cudaThreadSynchronize();
 }
@@ -285,7 +279,7 @@ void spgemm_csr(sfCSR *a, sfCSR *b, sfCSR *c, int grSize, unsigned short int * g
         int u = 0;
         while (!noChange) {
             u++;
-            printf("Ready for mult\n");
+//            printf("Ready for mult\n");
             if (first) {
                 first = false;
 #endif
@@ -297,11 +291,11 @@ void spgemm_csr(sfCSR *a, sfCSR *b, sfCSR *c, int grSize, unsigned short int * g
                 spgemm_kernel_hash(a, a, c, grSize, grBody, grTail, false);
             }
 
-            printf("Success mult!!\n");
-            printf("Matrix after mult\n");
+//            printf("Success mult!!\n");
+//            printf("Matrix after mult\n");
             cudaThreadSynchronize();
-            print_sum<<<1, 1>>>(c->nnz, c->d_val);
-            cudaThreadSynchronize();
+//            print_sum<<<1, 1>>>(c->nnz, c->d_val);
+//            cudaThreadSynchronize();
 //            if (u == 2) {
 //                print_matrix<<<1, 1>>>(c->M, c->d_rpt, c->d_col, c->d_val);
 //                cudaThreadSynchronize();
@@ -312,52 +306,52 @@ void spgemm_csr(sfCSR *a, sfCSR *b, sfCSR *c, int grSize, unsigned short int * g
             cudaFree(b->d_val);
             checkCudaErrors(cudaMalloc((void **)&(b->d_col), sizeof(int) * (a->nnz + c->nnz)));
             checkCudaErrors(cudaMalloc((void **)&(b->d_val), sizeof(real) * (a->nnz + c->nnz)));
-            printf("Ready for sum!!\n");
+//            printf("Ready for sum!!\n");
             high_resolution_clock::time_point begin_sum_time = high_resolution_clock::now();
-            cudaError_t result = cudaGetLastError();
-            if (result != cudaSuccess) {
-                printf("PROBLEM1: %s\n", cudaGetErrorString(result));
-            }
+//            cudaError_t result = cudaGetLastError();
+//            if (result != cudaSuccess) {
+//                printf("PROBLEM1: %s\n", cudaGetErrorString(result));
+//            }
             sumSparse(a, c, b);
-            result = cudaGetLastError();
-            if (result != cudaSuccess) {
-                printf("PROBLEM2: %s\n", cudaGetErrorString(result));
-            }
+//            result = cudaGetLastError();
+//            if (result != cudaSuccess) {
+//                printf("PROBLEM2: %s\n", cudaGetErrorString(result));
+//            }
             cudaThreadSynchronize();
             high_resolution_clock::time_point end_sum_time = high_resolution_clock::now();
-            printf("Success sum!!\n");
+//            printf("Success sum!!\n");
             milliseconds elapsed_secs = duration_cast<milliseconds>(end_sum_time - begin_sum_time);
             ave_msec_sum += static_cast<unsigned int>(elapsed_secs.count());
 
-            printf("Ready for copy!!\n");
+//            printf("Ready for copy!!\n");
 
             high_resolution_clock::time_point begin_copy_time = high_resolution_clock::now();
             cudaMemcpyFromSymbol(&nnzS, nnzSum, sizeof(int), 0, cudaMemcpyDeviceToHost);
             b->nnz = nnzS;
-            printf("Matrix after sum:\n");
+//            printf("Matrix after sum:\n");
 //            print_matrix<<<1, 1>>>(b->M, b->d_rpt, b->d_col, b->d_val);
-            print_sum<<<1, 1>>>(b->nnz, b->d_val);
-            cudaThreadSynchronize();
+//            print_sum<<<1, 1>>>(b->nnz, b->d_val);
+//            cudaThreadSynchronize();
             sfCSR * tmp = b;
             b = a;
             a = tmp;
             high_resolution_clock::time_point end_copy_time = high_resolution_clock::now();
 
-            printf("Success copy!!\n");
+//            printf("Success copy!!\n");
             milliseconds elapsed_secs_c = duration_cast<milliseconds>(end_copy_time - begin_copy_time);
             ave_msec_copy += static_cast<unsigned int>(elapsed_secs_c.count());
 
             //printf("NNZ of sum: %d RPT last of sum: %d\n", b->nnz, b->rpt[4]);
-            result = cudaGetLastError();
-            if (result != cudaSuccess) {
-                printf("PROBLEM3: %s\n", cudaGetErrorString(result));
-            }
+//            result = cudaGetLastError();
+//            if (result != cudaSuccess) {
+//                printf("PROBLEM3: %s\n", cudaGetErrorString(result));
+//            }
             cudaMemcpyFromSymbol(&noChange, flagNoChange, sizeof(int), 0, cudaMemcpyDeviceToHost);
             //printf("FLAG: %d\n", noChange);
-            result = cudaGetLastError();
-            if (result != cudaSuccess) {
-                printf("PROBLEM4: %s\n", cudaGetErrorString(result));
-            }
+//            result = cudaGetLastError();
+//            if (result != cudaSuccess) {
+//                printf("PROBLEM4: %s\n", cudaGetErrorString(result));
+//            }
             cudaThreadSynchronize();
         }
         printf("Average 'in sum' time: %d %d %f\n", ave_msec_sum, u, ave_msec_sum / (double)u);
@@ -520,7 +514,6 @@ void load_graph(const std::string & graph_filename, sfCSR * matrix) {
 });
 
     for (int i = 0; i < tempVec.size(); i++) {
-        //printf("INput: %p %p %p\n", tempVec[i].first.first, tempVec[i].first.second, tempVec[i].second);
         row_coo[i] = tempVec[i].first.first;
         col_coo[i] = tempVec[i].first.second;
         val_coo[i] = tempVec[i].second;
