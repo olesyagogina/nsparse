@@ -336,11 +336,6 @@ void check_spgemm_answer(sfCSR c, sfCSR ans)
 #endif
     for (i = 0; i < nz; i++) {
         delta = ans.val[i] - c.val[i];
-#ifdef FLOAT
-        //printf("In (%d %d) we have: %d\n", 1, c.col[i], c.val[i]);
-#else
-        //printf("In (%d %d) we have: %f\n", 1, c.col[i], c.val[i]);
-#endif
         base = ans.val[i];
         if (delta < 0) delta *= -1;
         if (base < 0) base *= -1;

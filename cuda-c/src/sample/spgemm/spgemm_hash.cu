@@ -22,13 +22,11 @@
 #include <chrono>
 #include <fstream>
 
-//#include <cusp/elementwise.h>
-//#include <cusp/csr_matrix.h>
-//#include <cusp/print.h>
-
 using namespace std;
 using namespace std::chrono;
 
+
+// not used in last version
 void csr_copy(sfCSR * src, sfCSR * dst) {
     release_csr(*dst);
     dst->M = src->M;
@@ -46,6 +44,7 @@ void csr_copy(sfCSR * src, sfCSR * dst) {
 }
 
 
+// only for debug
 __global__ void print_sum(int nnz, real * val) {
     int sumAmount = 0;
     int t;
@@ -58,6 +57,7 @@ __global__ void print_sum(int nnz, real * val) {
 }
 
 
+// only for debug
 __global__ void print_matrix(int sz, int * rpt, int * col, real * val) {
     int i, j, cnt = 0;
     printf("RPT: \n");
@@ -84,13 +84,10 @@ __global__ void set_nnz_sum(int * rptC, int sz) {
     rptC[0] = 0;
     int i;
     int sum = 0;
-//    printf("Counted RPT:\n");
     for (i = 1; i <= sz; i++) {
         sum += rptC[i];
         rptC[i] = sum;
-//        printf("%d ", rptC[i]);
     }
-//    printf("\n");
     nnzSum = sum;
 }
 
@@ -101,8 +98,6 @@ __global__ void sumSparse_kernel(int sz, int * rptA, int * colA, real * valA, in
     int colBcnt;
     int i;
     int idx = threadIdx.x;
-    //int newrpt = 0;
-    //rptC[0] = 0;
     int toThread = sz / 1024;
     toThread = sz % 1024 == 0 ? toThread : toThread + 1;
     int rpt_start_index = idx * toThread;
@@ -112,7 +107,6 @@ __global__ void sumSparse_kernel(int sz, int * rptA, int * colA, real * valA, in
         colAcnt = rptA[i];
         colBcnt = rptB[i];
 
-        //printf("In start of while: %d %d\n", colAcnt, colBcnt);
         while (colAcnt < rptA[i + 1] || colBcnt < rptB[i + 1]) {
 
             if (colAcnt < rptA[i + 1] && valA[colAcnt] == 0) {
@@ -124,8 +118,6 @@ __global__ void sumSparse_kernel(int sz, int * rptA, int * colA, real * valA, in
                 colBcnt++;
                 continue;
             }
-
-            //newrpt++;
 
             // if both matrix are in game
             if (colAcnt < rptA[i + 1] && colBcnt < rptB[i + 1]) {
@@ -162,9 +154,6 @@ __global__ void sumSparse_kernel(int sz, int * rptA, int * colA, real * valA, in
                 colBcnt++;
             }
         }
-
-        //rptC[i + 1] = newrpt;
-        //nnzSum = newrpt;
     }
 }
 
@@ -184,7 +173,6 @@ __global__ void precount_kernel(int sz, int * rptA, int * colA, real * valA, int
         colBcnt = rptB[i];
         counter = 0;
 
-        //printf("In start of while: %d %d\n", colAcnt, colBcnt);
         while (colAcnt < rptA[i + 1] || colBcnt < rptB[i + 1]) {
 
             if (colAcnt < rptA[i + 1] && valA[colAcnt] == 0) {
@@ -222,22 +210,15 @@ __global__ void precount_kernel(int sz, int * rptA, int * colA, real * valA, int
 
 
 // C = A | B and check if C == A (if they are equal flagNoChange will be true)
-// sz - amount of rows (we sum square matrix)
 void sumSparse(sfCSR * a, sfCSR * b, sfCSR * c) {
     int gridAmount = 1024;
     precount_kernel<<<1, gridAmount>>>(a->M, a->d_rpt, a->d_col, a->d_val, b->d_rpt, b->d_col, b->d_val, c->d_rpt);
     cudaThreadSynchronize();
     int nnzS = -1;
     cudaError_t result = cudaGetLastError();
-//    if (result != cudaSuccess) {
-//        printf("PROBLEM11: %s\n", cudaGetErrorString(result));
-//    }
     set_nnz_sum<<<1, 1>>>(c->d_rpt, c->M); // always in one thread!!!!
     cudaThreadSynchronize();
     result = cudaGetLastError();
-//    if (result != cudaSuccess) {
-//        printf("PROBLEM22: %s\n", cudaGetErrorString(result));
-//    }
     sumSparse_kernel<<<1, gridAmount>>>(a->M, a->d_rpt, a->d_col, a->d_val, b->d_rpt, b->d_col, b->d_val, c->d_rpt, c->d_col, c->d_val);
     cudaThreadSynchronize();
 }
@@ -248,8 +229,7 @@ void spgemm_csr(sfCSR *a, sfCSR *b, sfCSR *c, int grSize, unsigned short int * g
 {
 
     int i;
-  
-    long long int flop_count;
+
     cudaEvent_t event[4];
     float msec, msec_sum, ave_msec, flops;
   
@@ -260,9 +240,6 @@ void spgemm_csr(sfCSR *a, sfCSR *b, sfCSR *c, int grSize, unsigned short int * g
     /* Memcpy A and B from Host to Device */
     csr_memcpy(a);
     csr_memcpy(b);
-
-    /* Count flop of SpGEMM computation */
-    get_spgemm_flop(a, b, a->M, &flop_count);
 
     /* Execution of SpGEMM on Device */
     ave_msec = 0;
@@ -279,7 +256,6 @@ void spgemm_csr(sfCSR *a, sfCSR *b, sfCSR *c, int grSize, unsigned short int * g
         int u = 0;
         while (!noChange) {
             u++;
-//            printf("Ready for mult\n");
             if (first) {
                 first = false;
 #endif
@@ -291,67 +267,31 @@ void spgemm_csr(sfCSR *a, sfCSR *b, sfCSR *c, int grSize, unsigned short int * g
                 spgemm_kernel_hash(a, a, c, grSize, grBody, grTail, false);
             }
 
-//            printf("Success mult!!\n");
-//            printf("Matrix after mult\n");
             cudaThreadSynchronize();
-//            print_sum<<<1, 1>>>(c->nnz, c->d_val);
-//            cudaThreadSynchronize();
-//            if (u == 2) {
-//                print_matrix<<<1, 1>>>(c->M, c->d_rpt, c->d_col, c->d_val);
-//                cudaThreadSynchronize();
-//                print_matrix<<<1, 1>>>(a->M, a->d_rpt, a->d_col, a->d_val);
-//                cudaThreadSynchronize();
-//            }
             cudaFree(b->d_col);
             cudaFree(b->d_val);
             checkCudaErrors(cudaMalloc((void **)&(b->d_col), sizeof(int) * (a->nnz + c->nnz)));
             checkCudaErrors(cudaMalloc((void **)&(b->d_val), sizeof(real) * (a->nnz + c->nnz)));
-//            printf("Ready for sum!!\n");
+
             high_resolution_clock::time_point begin_sum_time = high_resolution_clock::now();
-//            cudaError_t result = cudaGetLastError();
-//            if (result != cudaSuccess) {
-//                printf("PROBLEM1: %s\n", cudaGetErrorString(result));
-//            }
             sumSparse(a, c, b);
-//            result = cudaGetLastError();
-//            if (result != cudaSuccess) {
-//                printf("PROBLEM2: %s\n", cudaGetErrorString(result));
-//            }
             cudaThreadSynchronize();
             high_resolution_clock::time_point end_sum_time = high_resolution_clock::now();
-//            printf("Success sum!!\n");
             milliseconds elapsed_secs = duration_cast<milliseconds>(end_sum_time - begin_sum_time);
             ave_msec_sum += static_cast<unsigned int>(elapsed_secs.count());
-
-//            printf("Ready for copy!!\n");
 
             high_resolution_clock::time_point begin_copy_time = high_resolution_clock::now();
             cudaMemcpyFromSymbol(&nnzS, nnzSum, sizeof(int), 0, cudaMemcpyDeviceToHost);
             b->nnz = nnzS;
-//            printf("Matrix after sum:\n");
-//            print_matrix<<<1, 1>>>(b->M, b->d_rpt, b->d_col, b->d_val);
-//            print_sum<<<1, 1>>>(b->nnz, b->d_val);
-//            cudaThreadSynchronize();
             sfCSR * tmp = b;
             b = a;
             a = tmp;
             high_resolution_clock::time_point end_copy_time = high_resolution_clock::now();
 
-//            printf("Success copy!!\n");
             milliseconds elapsed_secs_c = duration_cast<milliseconds>(end_copy_time - begin_copy_time);
             ave_msec_copy += static_cast<unsigned int>(elapsed_secs_c.count());
 
-            //printf("NNZ of sum: %d RPT last of sum: %d\n", b->nnz, b->rpt[4]);
-//            result = cudaGetLastError();
-//            if (result != cudaSuccess) {
-//                printf("PROBLEM3: %s\n", cudaGetErrorString(result));
-//            }
             cudaMemcpyFromSymbol(&noChange, flagNoChange, sizeof(int), 0, cudaMemcpyDeviceToHost);
-            //printf("FLAG: %d\n", noChange);
-//            result = cudaGetLastError();
-//            if (result != cudaSuccess) {
-//                printf("PROBLEM4: %s\n", cudaGetErrorString(result));
-//            }
             cudaThreadSynchronize();
         }
         printf("Average 'in sum' time: %d %d %f\n", ave_msec_sum, u, ave_msec_sum / (double)u);
@@ -373,15 +313,11 @@ void spgemm_csr(sfCSR *a, sfCSR *b, sfCSR *c, int grSize, unsigned short int * g
 #ifndef FLOAT
     ave_msec /= SPGEMM_TRI_NUM - 1;
 #endif
-
-    flops = (float)(flop_count) / 1000 / 1000 / ave_msec;
-  
-    printf("SpGEMM using CSR format (Hash-based): %f[GFLOPS], %f[ms]\n", flops, ave_msec);
+    printf("Total algorithm time: %f[ms]\n", ave_msec);
 
 #ifdef FLOAT
     c = a;
 #endif
-
 
     csr_memcpyDtH(c);
 #ifdef FLOAT
@@ -396,19 +332,6 @@ void spgemm_csr(sfCSR *a, sfCSR *b, sfCSR *c, int grSize, unsigned short int * g
 #ifndef FLOAT
     release_csr(*c);
 #endif
-
-    /* Check answer */
-#ifdef sfDEBUG
-    sfCSR ans;
-    // spgemm_cu_csr(a, b, &ans);
-
-    printf("(nnz of A): %d =>\n(Num of intermediate products): %ld =>\n(nnz of C): %d\n", a->nnz, flop_count / 2, c->nnz);
-    ans = *c;
-    check_spgemm_answer(*c, ans);
-
-    release_cpu_csr(ans);
-#endif
-  
     release_csr(*a);
     release_csr(*b);
     for (i = 0; i < 2; i++) {
@@ -509,9 +432,9 @@ void load_graph(const std::string & graph_filename, sfCSR * matrix) {
 
     sort(tempVec.begin(), tempVec.end(),
     [](const pair<pair<int, int>, unsigned short> & a, const pair<pair<int, int>, unsigned short> & b) -> bool
-{
-    return a.first.second < b.first.second;
-});
+    {
+        return a.first.second < b.first.second;
+    });
 
     for (int i = 0; i < tempVec.size(); i++) {
         row_coo[i] = tempVec[i].first.first;
@@ -571,7 +494,6 @@ void load_graph(const std::string & graph_filename, sfCSR * matrix) {
     free(col_coo);
     free(val_coo);
     free(each_row_index);
-    //printf("MATRIX loader: dimension: %d, nnz: %d\n", matrix->M, matrix->nnz);
 }
 #endif
 
@@ -584,31 +506,13 @@ int main(int argc, char **argv)
     /* Set CSR reading from MM file */
     int grammar_size = 6;
     unsigned short * grammar_body = (unsigned short *)calloc(grammar_size, sizeof(unsigned short));
-    grammar_body[0] = 0x1;
-//    grammar_body[0] = 0x4;
-    grammar_body[1] = 0x1;
-//    grammar_body[1] = 0x8;
-    grammar_body[2] = 0x1;
-    grammar_body[3] = 0x1;
-    grammar_body[4] = 0x4;
-    grammar_body[5] = 0x10;
     unsigned int * grammar_tail = (unsigned int *)calloc(grammar_size, sizeof(unsigned int));
-    grammar_tail[0] = 0x00020004;
-    grammar_tail[1] = 0x00080010;
-//    grammar_tail[0] = 0x00030003;
-//    grammar_tail[1] = 0x00040004;
-    grammar_tail[2] = 0x00020020;
-    grammar_tail[3] = 0x00080040;
-    grammar_tail[4] = 0x00010020;
-    grammar_tail[5] = 0x00010040;
-    cudaDeviceSynchronize();
 #ifndef FLOAT
     init_csr_matrix_from_file(&mat_a, argv[1]);
     init_csr_matrix_from_file(&mat_b, argv[1]);
 #endif
 
 #ifdef FLOAT
-    //printf("Before loading\n");
     grammar_size = load_grammar(argv[1], grammar_body, grammar_tail);
     printf("Grammar:\n");
     int q;
@@ -616,34 +520,9 @@ int main(int argc, char **argv)
     for (q = 0; q < grammar_size; q++) {
         printf("%p -> %p\n", grammar_body[q], grammar_tail[q]);
     }
-    //printf("Grammar loaded\n");
     load_graph(argv[2], &mat_a);
-    //printf("Graph loaded\n");
     load_graph(argv[2], &mat_b);
     printf("NNZ_A: %d, NNZ_B: %d SIZE_A: %d\n", mat_a.nnz, mat_b.nnz, mat_a.M);
-
-//    printf("CUSP part\n");
-//    cusp::csr_matrix<int, unsigned short, cusp::host_memory> A(3, 3, 3);
-//    A.row_offsets[0] = 0;  // first offset is always zero
-//    A.row_offsets[1] = 2;
-//    A.row_offsets[2] = 3;
-//    A.row_offsets[3] = 3;
-//    // last offset is always num_entries
-//    A.column_indices[0] = 0; A.values[0] = 3;
-//    A.column_indices[1] = 0; A.values[1] = 4;
-//    A.column_indices[2] = 1; A.values[2] = 5;
-//    // print A
-//    cusp::print(A);
-//    // initialize second 2x3 matrix
-//    cusp::csr_matrix<int, unsigned short, cusp::host_memory> B(A);
-//    // print B
-//    cusp::print(B);
-//    // compute the sum
-//    cusp::csr_matrix<int, unsigned short, cusp::host_memory> C;
-//    cusp::elementwise(A, B, C, thrust::bit_or<int>());
-//    // print C
-//    cusp::print(C);
-//    printf("End of CUSP part\n");
 #endif
     spgemm_csr(&mat_a, &mat_b, &mat_c, grammar_size, grammar_body, grammar_tail);
 
