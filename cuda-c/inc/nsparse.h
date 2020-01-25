@@ -171,9 +171,9 @@ void check_spgemm_answer(sfCSR c, sfCSR ans);
 void spgemm_kernel_hash(sfCSR *a, sfCSR *b, sfCSR *c, int grSize, unsigned short * grBody, unsigned int * grTail, bool setGRflag);
 void setGR();
 
-__constant__ int device_grammar_size = 2;
-__constant__ unsigned short device_grammar_body[1000] = {0x4, 0x8};
-__constant__ unsigned int device_grammar_tail[1000] = {0x00030003, 0x00070007};
+__constant__ int device_grammar_size;
+__constant__ unsigned short device_grammar_body[1000];
+__constant__ unsigned int device_grammar_tail[1000];
 
 
 

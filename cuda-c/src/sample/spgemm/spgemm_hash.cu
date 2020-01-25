@@ -347,7 +347,7 @@ unsigned char toBoolVector(unsigned int number) {
 
 std::unordered_map<std::string, std::vector<int> > terminal_to_nonterminals;
 
-int load_grammar(const std::string & grammar_filename, unsigned short * grammar_body, unsigned int * grammar_tail) {
+int load_grammar(const std::string & grammar_filename, unsigned short ** grammar_body, unsigned int ** grammar_tail) {
     std::ifstream chomsky_stream(grammar_filename);
 
     std::string line, tmp;
@@ -386,14 +386,16 @@ int load_grammar(const std::string & grammar_filename, unsigned short * grammar_
     }
     chomsky_stream.close();
 
-
+    int grammar_size = rules.size();
+    grammar_body = (unsigned short *)calloc(grammar_size, sizeof(unsigned short));
+    grammar_tail = (unsigned int *)calloc(grammar_size, sizeof(unsigned int));
 
     for (size_t i = 0; i < rules.size(); i++) {
-        grammar_body[i] = toBoolVector(rules[i].first);
-        grammar_tail[i] = (((unsigned int)toBoolVector(rules[i].second.first)) << 16) | (unsigned int)toBoolVector(rules[i].second.second);
+        (*grammar_body)[i] = toBoolVector(rules[i].first);
+        (*grammar_tail)[i] = (((unsigned int)toBoolVector(rules[i].second.first)) << 16) | (unsigned int)toBoolVector(rules[i].second.second);
     }
 
-    return rules.size();
+    return grammar_size;
 }
 
 void load_graph(const std::string & graph_filename, sfCSR * matrix) {
@@ -504,16 +506,16 @@ int main(int argc, char **argv)
     sfCSR mat_a, mat_b, mat_c;
   
     /* Set CSR reading from MM file */
-    int grammar_size = 6;
-    unsigned short * grammar_body = (unsigned short *)calloc(grammar_size, sizeof(unsigned short));
-    unsigned int * grammar_tail = (unsigned int *)calloc(grammar_size, sizeof(unsigned int));
+    int grammar_size;
+    unsigned short * grammar_body;
+    unsigned int * grammar_tail;
 #ifndef FLOAT
     init_csr_matrix_from_file(&mat_a, argv[1]);
     init_csr_matrix_from_file(&mat_b, argv[1]);
 #endif
 
 #ifdef FLOAT
-    grammar_size = load_grammar(argv[1], grammar_body, grammar_tail);
+    grammar_size = load_grammar(argv[1], &grammar_body, &grammar_tail);
     printf("Grammar:\n");
     int q;
     printf("Grammar size: %d\n", grammar_size);
