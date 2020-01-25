@@ -387,8 +387,8 @@ int load_grammar(const std::string & grammar_filename, unsigned short ** grammar
     chomsky_stream.close();
 
     int grammar_size = rules.size();
-    grammar_body = (unsigned short *)calloc(grammar_size, sizeof(unsigned short));
-    grammar_tail = (unsigned int *)calloc(grammar_size, sizeof(unsigned int));
+    grammar_body = (unsigned short **)calloc(grammar_size, sizeof(unsigned short));
+    grammar_tail = (unsigned int **)calloc(grammar_size, sizeof(unsigned int));
 
     for (size_t i = 0; i < rules.size(); i++) {
         (*grammar_body)[i] = toBoolVector(rules[i].first);
