@@ -8,4 +8,4 @@ To build SpGEMM:
 
 To run SpGEMM:
 
-!./bin/spgemm_hash_s <path_to_grammar> <path_to_matrix_data>
+./bin/spgemm_hash_s <path_to_grammar> <path_to_matrix_data>
