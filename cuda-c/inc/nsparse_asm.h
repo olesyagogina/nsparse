@@ -102,14 +102,10 @@ __device__ __inline__ int ld_gbl_int32(const int *col) {
 
 __device__ unsigned short atomicAddShort(unsigned short * address, unsigned short val)
 {
-    unsigned short checktmp = *address;
-    unsigned int *base_address = (unsigned int *) ((char *)address - ((size_t)address & 2));	//tera's revised version (showtopic=201975)
+    unsigned int *base_address = (unsigned int *) ((char *)address - ((size_t)address & 2));
     unsigned int long_val = ((size_t)address & 2) ? ((unsigned int)val << 16) : (unsigned short)val;
-    unsigned short beforeOr = *address;
     unsigned int long_old = atomicOr(base_address, long_val);
-//    if (val != 0) {
-//        printf("SUM: %x | %x = %x (before or: %x) Address: %p Base address: %p Longval: %x\n", checktmp, val, *address, beforeOr, address, base_address, long_val);
-//    }
+
     if ((size_t)address & 2) {
         return (unsigned short)(long_old >> 16);
     } else {
@@ -121,22 +117,11 @@ __device__ unsigned short atomicAddShort(unsigned short * address, unsigned shor
 
 __device__ __inline__ void atomic_fadd(real *adr, real val)
 {
-//#if __CUDA_ARCH__ >= 600
-//    atomicAdd(adr, val);
-//    printf("600ARCH");
-//#else
 #ifdef FLOAT
 #ifdef INT16
-    unsigned short int *address_ull = (unsigned short int *)(adr);
-    //printf("BEFORE: %d for %p\n", *address_ull, address_ull);
-    //printf("VAL: %d for %p\n", val, address_ull);
-    real input = val;
     atomicAddShort(adr, val);
-    //printf("RES: %d for %p\n", *address_ull, address_ull);
 #elif defined INT32
     unsigned int *address_ull = (unsigned int *)(adr);
-    //printf("BEFORE: %d for %p\n", *address_ull, address_ull);
-    //printf("VAL: %d for %p\n", val, address_ull);
     unsigned int old_val = *address_ull;
     unsigned int assumed;
     real input = val;
@@ -144,7 +129,6 @@ __device__ __inline__ void atomic_fadd(real *adr, real val)
         assumed = old_val;
         old_val = atomicCAS(address_ull, assumed, input + assumed);
     } while (assumed != old_val);
-    //printf("RES: %d for %p\n", *address_ull, address_ull);
 #endif
 #elif defined DOUBLE
     unsigned long long int *address_ull = (unsigned long long int *)(adr);
@@ -156,6 +140,5 @@ __device__ __inline__ void atomic_fadd(real *adr, real val)
         old_val = atomicCAS(address_ull, assumed, __double_as_longlong(input + __longlong_as_double(assumed)));
     } while (assumed != old_val);
 #endif
-//#endif
 }
 
