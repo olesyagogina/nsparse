@@ -166,7 +166,7 @@ void set_max_bin(int *d_arpt, int *d_acol, int *d_brpt, sfBIN *bin, int M)
     cudaMemcpy(bin->d_bin_size, bin->bin_size, sizeof(int) * BIN_NUM, cudaMemcpyHostToDevice);
     cudaMemcpy(bin->d_max, &(bin->max_intprod), sizeof(int), cudaMemcpyHostToDevice);
   
-    BS = 2048;
+    BS = 1024;
     GS = div_round_up(M, BS);
     set_intprod_num<<<GS, BS>>>(d_arpt, d_acol, d_brpt, bin->d_row_nz, bin->d_max, M);
     cudaMemcpy(&(bin->max_intprod), bin->d_max, sizeof(int), cudaMemcpyDeviceToHost);
@@ -211,7 +211,7 @@ void set_min_bin(sfBIN *bin, int M)
     cudaMemcpy(bin->d_bin_size, bin->bin_size, sizeof(int) * BIN_NUM, cudaMemcpyHostToDevice);
     cudaMemcpy(bin->d_max, &(bin->max_nz), sizeof(int), cudaMemcpyHostToDevice);
   
-    BS = 2048;
+    BS = 1024;
     GS = div_round_up(M, BS);
     set_bin<<<GS, BS>>>(bin->d_row_nz, bin->d_bin_size,
                         bin->d_max,
@@ -239,7 +239,7 @@ void set_min_bin(sfBIN *bin, int M)
         for (i = 1; i < BIN_NUM; i++) {
             bin->bin_offset[i] = M;
         }
-        BS = 2048;
+        BS = 1024;
         GS = div_round_up(M, BS);
         init_row_perm<<<GS, BS>>>(bin->d_row_perm, M);
     }
@@ -1150,7 +1150,7 @@ void set_row_nnz(int *d_arpt, int *d_acol,
             case 2 :
                              	BS = 128;
 				            	GS = bin->bin_size[i];
-            	set_row_nz_bin_each_tb<2048><<<GS, BS, 0, bin->stream[i]>>>
+            	set_row_nz_bin_each_tb<1024><<<GS, BS, 0, bin->stream[i]>>>
             	  (d_arpt, d_acol, d_brpt, d_bcol,
             	   bin->d_row_perm, bin->d_row_nz,
             	   bin->bin_offset[i], bin->bin_size[i]);
@@ -1172,7 +1172,7 @@ void set_row_nnz(int *d_arpt, int *d_acol,
             	   bin->bin_offset[i], bin->bin_size[i]);
             	break;
             case 5 :
-                             	BS = 2048;
+                             	BS = 1024;
 				            	GS = bin->bin_size[i];
             	set_row_nz_bin_each_tb<8192><<<GS, BS, 0, bin->stream[i]>>>
             	  (d_arpt, d_acol, d_brpt, d_bcol,
@@ -1187,7 +1187,7 @@ void set_row_nnz(int *d_arpt, int *d_acol,
             	    checkCudaErrors(cudaMalloc((void **)&d_fail_count, sizeof(int)));
             	    checkCudaErrors(cudaMalloc((void **)&d_fail_perm, sizeof(int) * bin->bin_size[i]));
             	    cudaMemcpy(d_fail_count, &fail_count, sizeof(int), cudaMemcpyHostToDevice);
-            	    BS = 2048;
+            	    BS = 1024;
             	    GS = bin->bin_size[i];
             	    set_row_nz_bin_each_tb_large<8192><<<GS, BS, 0, bin->stream[i]>>>
             	      (d_arpt, d_acol, d_brpt, d_bcol,
@@ -1200,7 +1200,7 @@ void set_row_nnz(int *d_arpt, int *d_acol,
             	        size_t table_size = (size_t)max_row_nz * fail_count;
             	        int *d_check;
             	        checkCudaErrors(cudaMalloc((void **)&(d_check), sizeof(int) * table_size));
-            	        BS = 2048;
+            	        BS = 1024;
             	        GS = div_round_up(table_size, BS);
             	        init_check<<<GS, BS, 0, bin->stream[i]>>>(d_check, table_size);
             	        GS = bin->bin_size[i];
@@ -1270,7 +1270,7 @@ void calculate_value_col_bin(int *d_arpt, int *d_acol, real *d_aval,
       case 3:
 	  BS = 256;
 	  GS = bin->bin_size[i];
-	  calculate_value_col_bin_each_tb<2048><<<GS, BS, 0, bin->stream[i]>>>
+	  calculate_value_col_bin_each_tb<1024><<<GS, BS, 0, bin->stream[i]>>>
 	    (d_arpt, d_acol, d_aval,
 	     d_brpt, d_bcol, d_bval,
 	     d_crpt, d_ccol, d_cval,
@@ -1288,7 +1288,7 @@ void calculate_value_col_bin(int *d_arpt, int *d_acol, real *d_aval,
 	     bin->bin_offset[i], bin->bin_size[i]);
 	  break;
       case 5:
-	  BS = 2048;
+	  BS = 1024;
 	  GS = bin->bin_size[i];
 	  calculate_value_col_bin_each_tb<4096><<<GS, BS, 0, bin->stream[i]>>>
 	    (d_arpt, d_acol, d_aval,
@@ -1305,7 +1305,7 @@ void calculate_value_col_bin(int *d_arpt, int *d_acol, real *d_aval,
 	    real *d_value;
 	    checkCudaErrors(cudaMalloc((void **)&(d_check), sizeof(int) * table_size));
 	    checkCudaErrors(cudaMalloc((void **)&(d_value), sizeof(real) * table_size));
-	    BS = 2048;
+	    BS = 1024;
 	    GS = div_round_up(table_size, BS);
 	    init_check<<<GS, BS, 0, bin->stream[i]>>>(d_check, table_size);
 	    init_value<<<GS, BS, 0, bin->stream[i]>>>(d_value, table_size);
