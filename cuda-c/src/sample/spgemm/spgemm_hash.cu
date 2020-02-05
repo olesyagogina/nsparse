@@ -374,7 +374,8 @@ int load_grammar(const std::string & grammar_filename, unsigned short ** grammar
 
     for (size_t i = 0; i < rules.size(); i++) {
         (*grammar_body)[i] = toBoolVector(rules[i].first);
-        (*grammar_tail)[i] = (((unsigned int)toBoolVector(rules[i].second.first)) << 16) | (unsigned int)toBoolVector(rules[i].second.second);
+        (*grammar_tail)[i] = (((unsigned int)toBoolVector(rules[i].second.first)) << 16)
+                | (unsigned int)toBoolVector(rules[i].second.second);
     }
 
     return grammar_size;
